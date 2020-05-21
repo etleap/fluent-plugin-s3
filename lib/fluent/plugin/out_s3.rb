@@ -502,6 +502,7 @@ module Fluent::Plugin
       credentials_options = {}
       case
       when @assume_role_credentials
+        log.info "Trying to assume the role #{:role_arn}"
         c = @assume_role_credentials
         iam_user_credentials = @aws_key_id && @aws_sec_key ? Aws::Credentials.new(@aws_key_id, @aws_sec_key) : nil
         region = c.sts_region || @s3_region
@@ -539,6 +540,7 @@ module Fluent::Plugin
         end
 
         options[:credentials] = Aws::AssumeRoleCredentials.new(credentials_options)
+        log.info "Successfully assumed the role #{:role_arn}"
       when @aws_key_id && @aws_sec_key
         options[:access_key_id] = @aws_key_id
         options[:secret_access_key] = @aws_sec_key
@@ -592,6 +594,9 @@ module Fluent::Plugin
         # See http://docs.aws.amazon.com/sdkforruby/api/Aws/S3/Client.html
       end
       options
+    rescue Aws::STS::Errors::AccessDenied => e
+      log.error "Failed to assume the role #{:role_arn}, because: #{e.message}"
+      options ## return the options, this was try and use the default credentials
     end
 
     class Compressor
