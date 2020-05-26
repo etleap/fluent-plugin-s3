@@ -487,9 +487,11 @@ module Fluent::Plugin
         credentials_options[:duration_seconds] = c.duration_seconds if c.duration_seconds
         credentials_options[:external_id] = c.external_id if c.external_id
         if @s3_region
+          puts "Setting the client"
           credentials_options[:client] = Aws::STS::Client.new(region: @s3_region)
         end
-        options[:credentials] = Aws::AssumeRoleCredentials.new(credentials_options)
+        credentials_options[:log] = @log
+        options[:credentials] = EtleapAssumeRole.new(credentials_options)
         log.info "Successfully assumed the role #{:role_arn}"
       when @web_identity_credentials
         c = @web_identity_credentials
@@ -628,6 +630,85 @@ module Fluent::Plugin
 
     def self.register_compressor(name, compressor)
       COMPRESSOR_REGISTRY.register(name, compressor)
+    end
+  end
+
+#   class RetryIAMRoleCredentials < Aws::AssumeRoleCredentials
+
+#     def initialize(options = {})
+#       @log = options[:log]
+#       super
+#     end
+  
+#     def refresh
+#       log.info "Refreshing credentials"
+#       super
+#     rescue Aws::STS::Errors::AccessDenied => e
+#       log.error "Failed to assume the role #{:role_arn}, because: #{e.message}"
+#     end
+  
+#   end
+# end
+
+  class EtleapAssumeRole
+    include Aws::CredentialProvider
+    include Aws::RefreshingCredentials
+
+    # @option options [required, String] :role_arn
+    # @option options [required, String] :role_session_name
+    # @option options [String] :policy
+    # @option options [Integer] :duration_seconds
+    # @option options [String] :external_id
+    # @option options [STS::Client] :client
+    def initialize(options = {})
+      puts "new"
+      puts "#{options[:client]}"
+      @log = options[:log]
+      client_opts = {}
+      @assume_role_params = {}
+      options.each_pair do |key, value|
+        if self.class.assume_role_options.include?(key)
+          @assume_role_params[key] = value
+        else
+          client_opts[key] = value
+        end
+      end
+      @client = client_opts[:client] || Aws::STS::Client.new(client_opts)
+      puts "calling super"
+      super
+    end
+
+    # @return [STS::Client]
+    attr_reader :client
+
+    private
+
+    def refresh
+      puts "refresh"
+      c = @client.assume_role(@assume_role_params).credentials
+      puts "assuming the role"
+      puts "#{c}"
+      @credentials = Aws::Credentials.new(
+        c.access_key_id,
+        c.secret_access_key,
+        c.session_token
+      )
+      @expiration = c.expiration
+    rescue Aws::STS::Errors::AccessDenied => e
+      puts "error"
+      @credentials = nil
+    end
+
+    class << self
+
+      # @api private
+      def assume_role_options
+        @aro ||= begin
+          input = Aws::STS::Client.api.operation(:assume_role).input
+          Set.new(input.shape.member_names)
+        end
+      end
+
     end
   end
 end
