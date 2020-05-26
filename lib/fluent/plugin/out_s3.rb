@@ -696,7 +696,7 @@ module Fluent::Plugin
       @expiration = c.expiration
     rescue Aws::STS::Errors::AccessDenied => e
       puts "error"
-      @credentials = nil
+      @credentials = Aws::Credentials.new("invalid", "invalid", "invalid")
     end
 
     class << self
