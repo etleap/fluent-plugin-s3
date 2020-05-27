@@ -524,9 +524,7 @@ EOC
 
   def test_assume_role_credentials
     expected_credentials = Aws::Credentials.new("test_key", "test_secret")
-    mock(Aws::AssumeRoleCredentials).new(role_arn: "test_arn",
-                                         role_session_name: "test_session",
-                                         client: anything){
+    mock(Fluent::Plugin::EtleapAssumeRoleCredentials).new(role_arn: "test_arn", role_session_name: "test_session", client: anything){
       expected_credentials
     }
     config = CONFIG_TIME_SLICE.split("\n").reject{|x| x =~ /.+aws_.+/}.join("\n")
@@ -547,9 +545,9 @@ EOC
     expected_credentials = Aws::Credentials.new("test_key", "test_secret")
     sts_client = Aws::STS::Client.new(region: 'ap-northeast-1')
     mock(Aws::STS::Client).new(region: 'ap-northeast-1'){ sts_client }
-    mock(Aws::AssumeRoleCredentials).new(role_arn: "test_arn",
-                                         role_session_name: "test_session",
-                                         client: sts_client){
+    mock(Fluent::Plugin::EtleapAssumeRoleCredentials).new(role_arn: "test_arn",
+                                        role_session_name: "test_session",
+                                        client: sts_client){
       expected_credentials
     }
     config = CONFIG_TIME_SLICE.split("\n").reject{|x| x =~ /.+aws_.+/}.join("\n")
@@ -689,12 +687,12 @@ EOC
   end
 
   def test_assume_role_credentials_fail
-    setup_mocks
-    mock(Aws::AssumeRoleCredentials).new(
-      role_arn: "test_arn",
-      role_session_name: "test_session",
-      client: anything
-    ) { raise Aws::STS::Errors::AccessDenied.new("a", "b") }
+    expected_credentials = Aws::Credentials.new("invalid", "invalid")
+    any_instance_of(Aws::STS::Client) do |klass|
+      stub(klass).assume_role(role_arn: "test_arn", role_session_name: "test_session") {
+        raise Aws::STS::Errors::AccessDenied.new("error", "message")
+      }
+    end
     config = CONFIG_TIME_SLICE.split("\n").reject{|x| x =~ /.+aws_.+/}.join("\n")
     config += %[
       <assume_role_credentials>
@@ -702,9 +700,15 @@ EOC
         role_session_name test_session
       </assume_role_credentials>
     ]
-    d = create_time_sliced_driver(config)
-    d.run {}
-    # should not raise an exception
+    d = create_driver(config)
+    # no exception should be raised during normal operation
+    assert_nothing_raised { d.run {} }
+
+    client = d.instance.instance_variable_get(:@s3).client
+    credentials = client.config.credentials
+    assert_instance_of(Fluent::Plugin::EtleapAssumeRoleCredentials, credentials)
+    assert_equal(credentials.credentials.access_key_id(), "invalid")
+    assert_equal(credentials.credentials.secret_access_key(), "invalid")
   end
 
 end
