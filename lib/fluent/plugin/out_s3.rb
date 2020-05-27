@@ -488,7 +488,7 @@ module Fluent::Plugin
         if @s3_region
           credentials_options[:client] = Aws::STS::Client.new(region: @s3_region)
         end
-        options[:credentials] = EtleapAssumeRole.new(credentials_options)
+        options[:credentials] = EtleapAssumeRoleCredentials.new(credentials_options)
       when @web_identity_credentials
         c = @web_identity_credentials
         credentials_options[:role_arn] = c.role_arn
@@ -630,7 +630,7 @@ module Fluent::Plugin
   end
 
   ## The following class is an adaptation of: https://github.com/aws/aws-sdk-ruby/blob/master/gems/aws-sdk-core/lib/aws-sdk-core/assume_role_credentials.rb
-  class EtleapAssumeRole
+  class EtleapAssumeRoleCredentials
     include Aws::CredentialProvider
     include Aws::RefreshingCredentials
 

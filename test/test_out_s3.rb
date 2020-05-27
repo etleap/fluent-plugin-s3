@@ -524,7 +524,7 @@ EOC
 
   def test_assume_role_credentials
     expected_credentials = Aws::Credentials.new("test_key", "test_secret")
-    mock(Fluent::Plugin::EtleapAssumeRole).new(role_arn: "test_arn", role_session_name: "test_session", client: anything){
+    mock(Fluent::Plugin::EtleapAssumeRoleCredentials).new(role_arn: "test_arn", role_session_name: "test_session", client: anything){
       expected_credentials
     }
     config = CONFIG_TIME_SLICE.split("\n").reject{|x| x =~ /.+aws_.+/}.join("\n")
@@ -545,9 +545,9 @@ EOC
     expected_credentials = Aws::Credentials.new("test_key", "test_secret")
     sts_client = Aws::STS::Client.new(region: 'ap-northeast-1')
     mock(Aws::STS::Client).new(region: 'ap-northeast-1'){ sts_client }
-    mock(Fluent::Plugin::EtleapAssumeRole).new(role_arn: "test_arn",
+    mock(Fluent::Plugin::EtleapAssumeRoleCredentials).new(role_arn: "test_arn",
                                         role_session_name: "test_session",
-                                        client: anything){
+                                        client: sts_client){
       expected_credentials
     }
     config = CONFIG_TIME_SLICE.split("\n").reject{|x| x =~ /.+aws_.+/}.join("\n")
@@ -687,7 +687,7 @@ EOC
   end
 
   def test_assume_role_credentials_fail
-    expected_credentials = Aws::Credentials.new("test_key", "test_secret")
+    expected_credentials = Aws::Credentials.new("invalid", "invalid")
     any_instance_of(Aws::STS::Client) do |klass|
       stub(klass).assume_role(role_arn: "test_arn", role_session_name: "test_session") {
         raise Aws::STS::Errors::AccessDenied.new("error", "message")
@@ -703,6 +703,12 @@ EOC
     d = create_driver(config)
     # no exception should be raised during normal operation
     assert_nothing_raised { d.run {} }
+
+    client = d.instance.instance_variable_get(:@s3).client
+    credentials = client.config.credentials
+    assert_instance_of(Fluent::Plugin::EtleapAssumeRoleCredentials, credentials)
+    assert_equal(credentials.credentials.access_key_id(), "invalid")
+    assert_equal(credentials.credentials.secret_access_key(), "invalid")
   end
 
 end
