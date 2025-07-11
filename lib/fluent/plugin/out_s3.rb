@@ -704,6 +704,16 @@ module Fluent::Plugin
     # @option options [Integer] :duration_seconds
     # @option options [String] :external_id
     # @option options [STS::Client] :client
+    # @option options [Callable] before_refresh Proc called before
+    #   credentials are refreshed.  Useful for updating tokens.
+    #   `before_refresh` is called when AWS credentials are
+    #   required and need to be refreshed. Tokens can be refreshed using
+    #   the following example:
+    #
+    #      before_refresh = Proc.new do |assume_role_credentials| do
+    #        assume_role_credentials.assume_role_params['token_code'] = update_token
+    #      end
+    #
     def initialize(options = {})
       client_opts = {}
       @assume_role_params = {}
@@ -715,26 +725,38 @@ module Fluent::Plugin
         end
       end
       @client = client_opts[:client] || Aws::STS::Client.new(client_opts)
+      @async_refresh = true
+      @metrics = ['CREDENTIALS_STS_ASSUME_ROLE']
       super
     end
 
     # @return [STS::Client]
     attr_reader :client
 
+    # @return [Hash]
+    attr_reader :assume_role_params
+
     private
 
     def refresh
-      c = @client.assume_role(@assume_role_params).credentials
+      resp = @client.assume_role(@assume_role_params)
+      creds = resp.credentials
       @credentials = Aws::Credentials.new(
         c.access_key_id,
         c.secret_access_key,
-        c.session_token
+        c.session_token,
+        account_id: parse_account_id(resp)
       )
       @expiration = c.expiration
     rescue Aws::STS::Errors::AccessDenied => e
       # We need to set some credentials, to prevent an NPE further up the call stack.
       @credentials = Aws::Credentials.new("invalid", "invalid", "invalid")
       @expiration = 0
+    end
+
+    def parse_account_id(resp)
+      arn = resp.assumed_role_user&.arn
+      ARNParser.parse(arn).account_id if ARNParser.arn?(arn)
     end
 
     class << self
