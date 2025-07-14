@@ -697,6 +697,7 @@ module Fluent::Plugin
   class EtleapAssumeRoleCredentials
     include Aws::CredentialProvider
     include Aws::RefreshingCredentials
+    include Aws::ARNParser
 
     # @option options [required, String] :role_arn
     # @option options [required, String] :role_session_name
@@ -742,12 +743,12 @@ module Fluent::Plugin
       resp = @client.assume_role(@assume_role_params)
       creds = resp.credentials
       @credentials = Aws::Credentials.new(
-        c.access_key_id,
-        c.secret_access_key,
-        c.session_token,
+        creds.access_key_id,
+        creds.secret_access_key,
+        creds.session_token,
         account_id: parse_account_id(resp)
       )
-      @expiration = c.expiration
+      @expiration = creds.expiration
     rescue Aws::STS::Errors::AccessDenied => e
       # We need to set some credentials, to prevent an NPE further up the call stack.
       @credentials = Aws::Credentials.new("invalid", "invalid", "invalid")
@@ -756,7 +757,7 @@ module Fluent::Plugin
 
     def parse_account_id(resp)
       arn = resp.assumed_role_user&.arn
-      ARNParser.parse(arn).account_id if ARNParser.arn?(arn)
+      Aws::ARNParser.parse(arn).account_id if Aws::ARNParser.arn?(arn)
     end
 
     class << self

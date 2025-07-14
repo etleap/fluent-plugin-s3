@@ -620,6 +620,34 @@ EOC
     assert_equal(expected_credentials, credentials)
   end
 
+  def test_assume_role_credentials_end_to_end
+    expected_credentials = Aws::Credentials.new("test_key", "test_secret")
+    any_instance_of(Aws::STS::Client) do |klass|
+      stub(klass).assume_role({:role_arn => "test_arn", :role_session_name => "test_session"}) {
+        return Aws::STS::Types::AssumeRoleResponse.new({
+          credentials: Aws::Credentials.new("test_key", "test_secret"),
+          assumed_role_user: Aws::STS::Types::AssumedRoleUser.new({
+            arn: "arn:aws:sts::123456789012:assumed-role/test_arn/test_session",
+            assumed_role_id: "AROAEXAMPLEID:test_session"
+          })
+        })
+      }
+    end
+    config = CONFIG_TIME_SLICE.split("\n").reject{|x| x =~ /.+aws_.+/}.join("\n")
+    config += %[
+      <assume_role_credentials>
+        role_arn test_arn
+        role_session_name test_session
+      </assume_role_credentials>
+    ]
+    d = create_time_sliced_driver(config)
+    assert_nothing_raised { d.run {} }
+    client = d.instance.instance_variable_get(:@s3).client
+    credentials = client.config.credentials
+    assert_equal(expected_credentials, credentials)
+  end
+
+
   def test_assume_role_credentials_with_region
     expected_credentials = Aws::Credentials.new("test_key", "test_secret")
     sts_client = Aws::STS::Client.new(region: 'ap-northeast-1')
