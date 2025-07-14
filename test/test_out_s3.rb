@@ -1019,7 +1019,7 @@ EOC
   def test_assume_role_credentials_fail
     expected_credentials = Aws::Credentials.new("invalid", "invalid")
     any_instance_of(Aws::STS::Client) do |klass|
-      stub(klass).assume_role(role_arn: "test_arn", role_session_name: "test_session") {
+      stub(klass).assume_role({:role_arn => "test_arn", :role_session_name => "test_session"}) {
         raise Aws::STS::Errors::AccessDenied.new("error", "message")
       }
     end
